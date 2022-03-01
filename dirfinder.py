@@ -16,7 +16,7 @@ class Dir_Finder():
         self.ext_list = self.create_extensions()
         self.url = self.check_url()
         self.headers = self.create_header()
-        self.options_and_wordlistset()
+        self.set_processes()
 
     def logo(self):
         display = "╔═══╗───╔═══╗─────╔╗\n" 
@@ -29,7 +29,7 @@ class Dir_Finder():
 
     def create_extensions(self):
         if args.e:
-            ext_list = self.extensions.split() 
+            ext_list = self.extensions.split()
             ext_list.insert(0,"")
             ext_list.insert(1,"/")
         else:
@@ -48,15 +48,21 @@ class Dir_Finder():
             return fixed_url
 
     def create_header(self):
-
         headers = {
             "Connection":"close"
         }
 
         return headers
 
-    def options_and_wordlistset(self):
+    def set_processes(self):
         print("Finding Pages:")
+
+        if args.b:
+            print("Blacklisted Status Code: " + self.blacklist_status_code)
+
+        if args.o:
+            file_write = open(self.output_file,"w")
+            file_write.close()
 
         original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
         pool = Pool(processes=int(self.threads)) 
@@ -66,65 +72,24 @@ class Dir_Finder():
         with open(self.file,'r') as wordlist_file: 
             for each_word in wordlist_file:
                 lines.append(each_word.rstrip())
-
-        if args.o:
-
-            if args.b:
-                print("Blacklisted Status Code: " + self.blacklist_status_code)
-                file_write = open(self.output_file,"w")
-                file_write.close()
-                try:
-                    start = pool.map_async(self.directory_finder_with_outputfile_and_blacklist_status_code,lines)
-                except KeyboardInterrupt:
-                    print("Bye Bye!")
-                    pool.terminate()
-                    exit()
-                else:
-                    pool.close()
-                pool.join()  
-
-            else:
-                file_write = open(self.output_file,"w")
-                file_write.close()
-                try:
-                    start = pool.map_async(self.directory_finder_with_outputfile,lines)
-                except KeyboardInterrupt:
-                    print("Bye Bye!")
-                    pool.terminate()
-                    exit()
-                else:
-                    pool.close()
-                pool.join() 
-
+        
+        try:
+            start = pool.map_async(self.directory_finder,lines)
+        except KeyboardInterrupt:
+            pool.terminate()
         else:
-
-            if args.b:
-                print("Blacklisted Status Code: " + self.blacklist_status_code)
-                try:
-                    start = pool.map_async(self.directory_finder_with_blacklist_status_code,lines)
-                except KeyboardInterrupt:
-                    print("Bye Bye!")
-                    pool.terminate()
-                    exit()
-                else:
-                    pool.close()
-                pool.join() 
-
-            else:
-                try:
-                    start = pool.map_async(self.directory_finder_no_options,lines)
-                except KeyboardInterrupt:
-                    print("Bye Bye!")
-                    pool.terminate()
-                    exit()
-                else:
-                    pool.close()
-                pool.join()
+            pool.close()
+        pool.join()
 
         print("Done!")
 
-    def directory_finder_no_options(self,each_word):
+    def directory_finder(self,each_word):
         requests.packages.urllib3.disable_warnings()
+
+        if args.b:
+            self.blacklist_status_code = self.blacklist_status_code
+        else:
+            self.blacklist_status_code = 404
                 
         for ext in self.ext_list:
             sites = self.url + each_word + ext.strip()
@@ -132,65 +97,23 @@ class Dir_Finder():
 
             if sites.find("#") != -1:
                 continue
-            elif found.status_code != 404:
+                
+            if args.o:
+                if found.status_code != 404 and found.status_code != int(self.blacklist_status_code):
+                    print("Found: ", found.url, "\tStatus Code:", found.status_code)  
+
+                    file_write = open(self.output_file,'a')
+                    file_write.write("Found: ")
+                    file_write.write(found.url)
+                    file_write.write("\tStatus Code: ")
+                    file_write.write(str(found.status_code))
+                    file_write.write("\n")
+                    file_write.close()
+
+                    break 
+
+            elif found.status_code != 404 and found.status_code != int(self.blacklist_status_code):
                 print("Found: ", found.url, "\tStatus Code:", found.status_code) 
-                break
-                
-    def directory_finder_with_blacklist_status_code(self,each_word):
-        requests.packages.urllib3.disable_warnings() 
-                
-        for ext in self.ext_list: 
-            sites = self.url + each_word + ext.strip()
-            found = requests.get(sites, allow_redirects = False, verify=False,headers=self.headers) 
-            
-            if sites.find("#") != -1:
-                continue
-            elif found.status_code != 404 and found.status_code != int(self.blacklist_status_code): 
-                print("Found: ", found.url, "\tStatus Code:", found.status_code) 
-                break                                                
-
-    def directory_finder_with_outputfile(self,each_word):
-        requests.packages.urllib3.disable_warnings() 
-                
-        for ext in self.ext_list:
-            sites = self.url + each_word + ext.strip()  
-            found = requests.get(sites, allow_redirects = False, verify=False,headers=self.headers) 
-                    
-            if sites.find("#") != -1:
-                continue
-            elif found.status_code != 404: 
-                print("Found: ", found.url, "\tStatus Code:", found.status_code)  
-
-                file_write = open(self.output_file,'a')
-                file_write.write("Found: ")
-                file_write.write(found.url)
-                file_write.write("\tStatus Code: ")
-                file_write.write(str(found.status_code))
-                file_write.write("\n")
-                file_write.close()
-
-                break                                                                
-
-    def directory_finder_with_outputfile_and_blacklist_status_code(self,each_word):
-        requests.packages.urllib3.disable_warnings() 
-                
-        for ext in self.ext_list: 
-            sites = self.url + each_word + ext.strip() 
-            found = requests.get(sites, allow_redirects = False, verify=False,headers=self.headers)
-                    
-            if sites.find("#") != -1:
-                continue
-            elif found.status_code != 404 and found.status_code != int(self.blacklist_status_code): 
-                print("Found: ", found.url, "\tStatus Code:", found.status_code)  
-
-                file_write = open(self.output_file,'a')
-                file_write.write("Found: ")
-                file_write.write(found.url)
-                file_write.write("\tStatus Code: ")
-                file_write.write(str(found.status_code))
-                file_write.write("\n")
-                file_write.close()
-
                 break                                                        
 
 if __name__ == "__main__":
