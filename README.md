@@ -12,6 +12,10 @@ A web directory and page finder
 
 * With python3
 ```
+python3 dirfinder.py -u http://findme.blah/ -w list.txt
+```
+* Using extensions
+```
 python3 dirfinder.py -u http://findme.blah/ -e '.txt .php .html' -w list.txt
 ```
 

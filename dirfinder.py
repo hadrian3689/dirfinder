@@ -13,7 +13,8 @@ class Dir_Finder():
         self.threads = threads
         
         self.logo()
-        self.ext_list = self.create_extensions()
+        if args.e:
+            self.ext_list = self.create_extensions()
         self.url = self.check_url()
         self.headers = self.create_header()
         self.set_processes()
@@ -28,14 +29,8 @@ class Dir_Finder():
         print(display)
 
     def create_extensions(self):
-        if args.e:
-            ext_list = self.extensions.split()
-            ext_list.insert(0,"")
-            ext_list.insert(1,"/")
-        else:
-            ext_list = []
-            ext_list.insert(0,"")
-            ext_list.insert(1,"/")
+        ext_list = self.extensions.split()
+        ext_list.insert(0,"")
 
         return ext_list
 
@@ -68,13 +63,22 @@ class Dir_Finder():
         pool = Pool(processes=int(self.threads)) 
         signal.signal(signal.SIGINT, original_sigint_handler)
 
-        lines = []
+        wordlist = []
         with open(self.file,'r') as wordlist_file: 
-            for each_word in wordlist_file:
-                lines.append(each_word.rstrip())
-        
+            for each_word in wordlist_file: 
+                if args.e:
+                    for ext in self.ext_list:
+                        if each_word.find("#") != -1:
+                            continue
+                        word_ext = each_word.strip() + ext
+                        wordlist.append(word_ext.strip())
+                else:
+                    if each_word.find("#") != -1:
+                            continue
+                    wordlist.append(each_word.rstrip())
+
         try:
-            start = pool.map_async(self.directory_finder,lines)
+            start = pool.map_async(self.directory_finder,wordlist)
         except KeyboardInterrupt:
             pool.terminate()
         else:
@@ -83,7 +87,7 @@ class Dir_Finder():
 
         print("Done!")
 
-    def directory_finder(self,each_word):
+    def directory_finder(self,word):
         requests.packages.urllib3.disable_warnings()
 
         if args.b:
@@ -91,30 +95,23 @@ class Dir_Finder():
         else:
             self.blacklist_status_code = 404
                 
-        for ext in self.ext_list:
-            sites = self.url + each_word + ext.strip()
-            found = requests.get(sites, allow_redirects = False, verify=False,headers=self.headers) 
+        sites = self.url + word
+        found = requests.get(sites, allow_redirects = False, verify=False,headers=self.headers) 
+            
+        if args.o:
+            if found.status_code != 404 and found.status_code != int(self.blacklist_status_code):
+                print("Found: ", found.url, "\tStatus Code:", found.status_code)  
 
-            if sites.find("#") != -1:
-                continue
-                
-            if args.o:
-                if found.status_code != 404 and found.status_code != int(self.blacklist_status_code):
-                    print("Found: ", found.url, "\tStatus Code:", found.status_code)  
+                file_write = open(self.output_file,'a')
+                file_write.write("Found: ")
+                file_write.write(found.url)
+                file_write.write("\tStatus Code: ")
+                file_write.write(str(found.status_code))
+                file_write.write("\n")
+                file_write.close() 
 
-                    file_write = open(self.output_file,'a')
-                    file_write.write("Found: ")
-                    file_write.write(found.url)
-                    file_write.write("\tStatus Code: ")
-                    file_write.write(str(found.status_code))
-                    file_write.write("\n")
-                    file_write.close()
-
-                    break 
-
-            elif found.status_code != 404 and found.status_code != int(self.blacklist_status_code):
-                print("Found: ", found.url, "\tStatus Code:", found.status_code) 
-                break                                                        
+        elif found.status_code != 404 and found.status_code != int(self.blacklist_status_code):
+            print("Found: ", found.url, "\tStatus Code:", found.status_code)                                                         
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Brute Forcing Directories and Pages')
